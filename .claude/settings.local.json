@@ -16,7 +16,8 @@
       "mcp__woodpecker-mcp__list_pipelines",
       "mcp__woodpecker-mcp__get_pipeline_status",
       "mcp__woodpecker-mcp__get_logs",
-      "Bash(golangci-lint run:*)"
+      "Bash(golangci-lint run:*)",
+      "mcp__woodpecker-mcp__start_pipeline"
     ],
     "deny": [],
     "ask": []
