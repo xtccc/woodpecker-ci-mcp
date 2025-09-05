@@ -1,0 +1,23 @@
+steps:
+  - name: test
+    image: golang:1.24
+    commands:
+      - go version
+      - go mod download
+      - go test -v ./...
+
+  - name: build
+    image: golang:1.24
+    commands:
+      - go build -v -o woodpecker-mcp ./cmd/woodpecker-mcp
+      - ./woodpecker-mcp --version || true
+
+  - name: lint
+    image: golangci/golangci-lint:latest
+    commands:
+      - golangci-lint run
+
+when:
+  event:
+    - push
+    - pull_request
