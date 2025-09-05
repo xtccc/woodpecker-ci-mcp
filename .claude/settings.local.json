@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:mcp-go.dev)",
+      "WebFetch(domain:woodpecker-ci.org)",
+      "WebFetch(domain:pkg.go.dev)",
+      "WebSearch",
+      "Bash(go mod:*)",
+      "Bash(go build:*)",
+      "Bash(go doc:*)",
+      "Bash(./woodpecker-mcp:*)",
+      "Bash(go get:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

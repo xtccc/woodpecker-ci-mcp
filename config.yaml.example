@@ -1,0 +1,21 @@
+# Woodpecker MCP Server Configuration Example
+
+# Server configuration
+server:
+  name: "woodpecker-mcp"
+  version: "1.0.0"
+
+# Woodpecker CI connection settings
+woodpecker:
+  # URL of your Woodpecker CI server
+  url: "https://woodpecker.example.com"
+  # Personal Access Token from your Woodpecker CI account
+  # Get this from your profile page in Woodpecker CI
+  token: "your-personal-access-token-here"
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: text, json
+  format: "text"
