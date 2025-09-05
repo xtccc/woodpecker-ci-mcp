@@ -339,8 +339,8 @@ func (tm *ToolManager) handleGetPipelineStatus(ctx context.Context, arguments ma
 	if latest {
 		pipeline, err = tm.client.GetLastPipeline(repoID)
 	} else {
-		pipelineNum, err := requireNumber(arguments, "pipeline_number")
-		if err != nil {
+		pipelineNum, numErr := requireNumber(arguments, "pipeline_number")
+		if numErr != nil {
 			return tm.errorResult("Either pipeline_number or latest=true must be provided"), nil
 		}
 		pipeline, err = tm.client.GetPipeline(repoID, int64(pipelineNum))

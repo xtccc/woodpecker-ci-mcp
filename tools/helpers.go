@@ -39,15 +39,6 @@ func getBool(arguments map[string]interface{}, key string, defaultValue bool) bo
 	return defaultValue
 }
 
-func getNumber(arguments map[string]interface{}, key string, defaultValue float64) float64 {
-	if val, ok := arguments[key]; ok {
-		if numVal, ok := val.(float64); ok {
-			return numVal
-		}
-	}
-	return defaultValue
-}
-
 func getString(arguments map[string]interface{}, key string, defaultValue string) string {
 	if val, ok := arguments[key]; ok {
 		if strVal, ok := val.(string); ok {

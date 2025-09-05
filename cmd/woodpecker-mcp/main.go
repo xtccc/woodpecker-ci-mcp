@@ -136,8 +136,12 @@ func init() {
 	rootCmd.PersistentFlags().String("log-format", "text", "log format (text, json)")
 
 	// Bind flags to viper
-	viper.BindPFlag("logging.level", rootCmd.PersistentFlags().Lookup("log-level"))
-	viper.BindPFlag("logging.format", rootCmd.PersistentFlags().Lookup("log-format"))
+	if err := viper.BindPFlag("logging.level", rootCmd.PersistentFlags().Lookup("log-level")); err != nil {
+		log.Fatal().Err(err).Msg("Failed to bind log-level flag")
+	}
+	if err := viper.BindPFlag("logging.format", rootCmd.PersistentFlags().Lookup("log-format")); err != nil {
+		log.Fatal().Err(err).Msg("Failed to bind log-format flag")
+	}
 
 	// Add subcommands
 	rootCmd.AddCommand(serveCmd)
@@ -180,7 +184,12 @@ func initializeConfig() {
 	viper.AutomaticEnv()
 
 	// Read config file
-	viper.ReadInConfig()
+	if err := viper.ReadInConfig(); err != nil {
+		// It's okay if config file doesn't exist
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			log.Debug().Err(err).Msg("Error reading config file")
+		}
+	}
 
 	// Configure logger
 	configureLogger()
