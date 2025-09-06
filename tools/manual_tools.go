@@ -76,6 +76,10 @@ func (tm *ToolManager) initializeTools() {
 						"type":        "string",
 						"description": "Repository full name (owner/repo, use either repo_id or repo_name)",
 					},
+					"limit": map[string]interface{}{
+						"type":        "number",
+						"description": "Maximum number of pipelines to return (default: 10, max: 100)",
+					},
 				},
 			},
 		},
@@ -196,6 +200,14 @@ func (tm *ToolManager) initializeTools() {
 					"format": map[string]interface{}{
 						"type":        "string",
 						"description": "Output format: 'json' for structured data or 'text' for plain text (default: json)",
+					},
+					"lines": map[string]interface{}{
+						"type":        "number",
+						"description": "Number of lines to return (default: all)",
+					},
+					"tail": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Return last N lines instead of first N (default: false for head)",
 					},
 				},
 			},
@@ -318,10 +330,28 @@ func (tm *ToolManager) handleListPipelines(ctx context.Context, arguments map[st
 		return tm.errorResult(fmt.Sprintf("Failed to list pipelines: %v", err)), nil
 	}
 
+	// Apply limit with default of 10 and max of 100
+	limit := getNumber(arguments, "limit", 10)
+	if limit > 100 {
+		limit = 100
+	}
+	if limit < 1 {
+		limit = 10
+	}
+
+	totalCount := len(pipelines)
+	limited := totalCount > int(limit)
+	
+	if limited {
+		pipelines = pipelines[:int(limit)]
+	}
+
 	response := map[string]interface{}{
 		"repo_id":     repoID,
 		"pipelines":   pipelines,
-		"total_count": len(pipelines),
+		"total_count": totalCount,
+		"returned":    len(pipelines),
+		"limited":     limited,
 	}
 
 	return tm.jsonResult(response)
@@ -439,10 +469,27 @@ func (tm *ToolManager) handleGetLogs(ctx context.Context, arguments map[string]i
 	}
 
 	format := getString(arguments, "format", "json")
+	lines := getNumber(arguments, "lines", 0) // 0 means all lines
+	useTail := getBool(arguments, "tail", false)
 
 	logs, err := tm.client.GetStepLogs(repoID, int64(pipelineNum), int64(stepID))
 	if err != nil {
 		return tm.errorResult(fmt.Sprintf("Failed to get logs: %v", err)), nil
+	}
+
+	totalCount := len(logs)
+	limited := false
+
+	// Apply line limiting if requested
+	if lines > 0 && int(lines) < len(logs) {
+		limited = true
+		if useTail {
+			// Take last N lines
+			logs = logs[len(logs)-int(lines):]
+		} else {
+			// Take first N lines
+			logs = logs[:int(lines)]
+		}
 	}
 
 	if format == "text" {
@@ -453,8 +500,18 @@ func (tm *ToolManager) handleGetLogs(ctx context.Context, arguments map[string]i
 			}
 		}
 
-		plainText := fmt.Sprintf("Logs for repo %d, pipeline %d, step %d:\n%s",
-			repoID, int64(pipelineNum), int64(stepID), strings.Join(logLines, "\n"))
+		var plainText string
+		if limited {
+			direction := "first"
+			if useTail {
+				direction = "last"
+			}
+			plainText = fmt.Sprintf("Logs for repo %d, pipeline %d, step %d (%s %d of %d lines):\n%s",
+				repoID, int64(pipelineNum), int64(stepID), direction, len(logs), totalCount, strings.Join(logLines, "\n"))
+		} else {
+			plainText = fmt.Sprintf("Logs for repo %d, pipeline %d, step %d:\n%s",
+				repoID, int64(pipelineNum), int64(stepID), strings.Join(logLines, "\n"))
+		}
 
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
@@ -471,7 +528,16 @@ func (tm *ToolManager) handleGetLogs(ctx context.Context, arguments map[string]i
 		"pipeline_number": int64(pipelineNum),
 		"step_id":         int64(stepID),
 		"logs":            logs,
-		"log_count":       len(logs),
+		"total_count":     totalCount,
+		"returned":        len(logs),
+		"limited":         limited,
+	}
+
+	if limited {
+		response["limit_mode"] = map[string]interface{}{
+			"lines": int(lines),
+			"tail":  useTail,
+		}
 	}
 
 	return tm.jsonResult(response)

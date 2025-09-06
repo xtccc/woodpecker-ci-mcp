@@ -48,6 +48,15 @@ func getString(arguments map[string]interface{}, key string, defaultValue string
 	return defaultValue
 }
 
+func getNumber(arguments map[string]interface{}, key string, defaultValue float64) float64 {
+	if val, ok := arguments[key]; ok {
+		if numVal, ok := val.(float64); ok {
+			return numVal
+		}
+	}
+	return defaultValue
+}
+
 func requireNumber(arguments map[string]interface{}, key string) (float64, error) {
 	if val, ok := arguments[key]; ok {
 		if numVal, ok := val.(float64); ok {
