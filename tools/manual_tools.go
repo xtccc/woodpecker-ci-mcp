@@ -4,11 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/sirupsen/logrus"
+	"go.woodpecker-ci.org/woodpecker/v3/pipeline/errors"
+	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/linter"
+	yaml "go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml"
 	"go.woodpecker-ci.org/woodpecker/v3/woodpecker-go/woodpecker"
 
 	"github.com/denysvitali/woodpecker-ci-mcp/internal/client"
@@ -212,6 +217,24 @@ func (tm *ToolManager) initializeTools() {
 				},
 			},
 		},
+		{
+			Name:        "lint_config",
+			Description: "Lint a Woodpecker CI pipeline configuration file (local YAML file)",
+			InputSchema: mcp.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Path to the pipeline configuration file (.yaml or .yml)",
+					},
+					"strict": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Treat warnings as errors (default: false)",
+					},
+				},
+				Required: []string{"path"},
+			},
+		},
 	}
 }
 
@@ -264,6 +287,8 @@ func (tm *ToolManager) getToolHandler(name string) server.ToolHandlerFunc {
 			return tm.handleApprovePipeline(ctx, arguments)
 		case "get_logs":
 			return tm.handleGetLogs(ctx, arguments)
+		case "lint_config":
+			return tm.handleLintConfig(ctx, arguments)
 		default:
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
@@ -673,4 +698,116 @@ func (tm *ToolManager) errorResult(message string) *mcp.CallToolResult {
 		},
 		IsError: true,
 	}
+}
+
+func (tm *ToolManager) handleLintConfig(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	filePath := getString(arguments, "path", "")
+	if filePath == "" {
+		return tm.errorResult("path is required"), nil
+	}
+
+	// Read the file
+	buf, err := os.ReadFile(filePath)
+	if err != nil {
+		return tm.errorResult(fmt.Sprintf("Failed to read file: %v", err)), nil
+	}
+
+	rawConfig := string(buf)
+
+	// Parse YAML
+	parsedConfig, err := yaml.ParseString(rawConfig)
+	if err != nil {
+		return tm.errorResult(fmt.Sprintf("Failed to parse YAML: %v", err)), nil
+	}
+
+	// Create WorkflowConfig
+	config := &linter.WorkflowConfig{
+		File:      path.Base(filePath),
+		RawConfig: rawConfig,
+		Workflow:  parsedConfig,
+	}
+
+	// Run linter
+	strict := getBool(arguments, "strict", false)
+	err = linter.New(
+		linter.WithTrusted(linter.TrustedConfiguration{
+			Network:  true,
+			Volumes:  true,
+			Security: true,
+		}),
+	).Lint([]*linter.WorkflowConfig{config})
+
+	// Format the result
+	var issues []map[string]interface{}
+	var errorCount int
+	var warningCount int
+
+	if err != nil {
+		pipelineErrors := errors.GetPipelineErrors(err)
+		for _, pe := range pipelineErrors {
+			issue := map[string]interface{}{
+				"message":    pe.Message,
+				"is_warning": pe.IsWarning,
+				"type":       string(pe.Type),
+			}
+
+			// Extract field info based on error type
+			if linterData := errors.GetLinterData(pe); linterData != nil {
+				issue["file"] = linterData.File
+				issue["field"] = linterData.Field
+			} else if deprecationData, ok := pe.Data.(*errors.DeprecationErrorData); ok {
+				issue["file"] = deprecationData.File
+				issue["field"] = deprecationData.Field
+				issue["docs"] = deprecationData.Docs
+			} else if badHabitData, ok := pe.Data.(*errors.BadHabitErrorData); ok {
+				issue["file"] = badHabitData.File
+				issue["field"] = badHabitData.Field
+				issue["docs"] = badHabitData.Docs
+			}
+
+			issues = append(issues, issue)
+
+			if pe.IsWarning {
+				warningCount++
+			} else {
+				errorCount++
+			}
+		}
+	}
+
+	// Determine overall status
+	valid := true
+	if err != nil {
+		if strict && warningCount > 0 {
+			valid = false
+		} else if errorCount > 0 {
+			valid = false
+		}
+	}
+
+	response := map[string]interface{}{
+		"valid":         valid,
+		"path":          filePath,
+		"error_count":   errorCount,
+		"warning_count": warningCount,
+		"issues":        issues,
+		"strict":        strict,
+	}
+
+	if !valid {
+		response["message"] = fmt.Sprintf("Config has %d error(s) and %d warning(s)", errorCount, warningCount)
+	} else {
+		response["message"] = "Config is valid"
+		if warningCount > 0 {
+			response["message"] = fmt.Sprintf("Config is valid with %d warning(s)", warningCount)
+		}
+	}
+
+	// If strict mode caused failure due to warnings, add that info
+	if strict && warningCount > 0 && errorCount == 0 {
+		response["strict_failure"] = true
+		response["message"] = "Config has warnings that are treated as errors in strict mode"
+	}
+
+	return tm.jsonResult(response)
 }
