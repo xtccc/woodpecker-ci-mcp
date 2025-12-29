@@ -29,8 +29,8 @@ logging:
 	// Change to temp directory to load config
 	originalDir, err := os.Getwd()
 	require.NoError(t, err)
-	defer os.Chdir(originalDir)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
+	_ = os.Chdir(tmpDir)
 
 	// Load the config
 	cfg, err := Load()
@@ -53,8 +53,8 @@ func TestLoad_MissingConfig(t *testing.T) {
 	// Change to temp directory (no config file exists)
 	originalDir, err := os.Getwd()
 	require.NoError(t, err)
-	defer os.Chdir(originalDir)
-	os.Chdir(tmpDir)
+	defer func() { _ = os.Chdir(originalDir) }()
+	_ = os.Chdir(tmpDir)
 
 	// Load should succeed with defaults when no config file exists
 	cfg, err := Load()

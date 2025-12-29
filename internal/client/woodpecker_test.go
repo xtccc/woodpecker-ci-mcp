@@ -45,7 +45,7 @@ func TestNew_ValidConfig(t *testing.T) {
 		if r.URL.Path == "/api/user" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"id": 1, "login": "testuser", "email": "test@example.com"}`))
+			_, _ = w.Write([]byte(`{"id": 1, "login": "testuser", "email": "test@example.com"}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -85,7 +85,7 @@ func TestGetCurrentUser_Success(t *testing.T) {
 		if r.URL.Path == "/api/user" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"id": 1, "login": "testuser", "email": "test@example.com"}`))
+			_, _ = w.Write([]byte(`{"id": 1, "login": "testuser", "email": "test@example.com"}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -114,7 +114,7 @@ func TestTestConnection_Failure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/user" {
 			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": "unauthorized"}`))
+			_, _ = w.Write([]byte(`{"error": "unauthorized"}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)

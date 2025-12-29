@@ -75,7 +75,7 @@ func New(cfg Config, logger *logrus.Logger) (*Client, error) {
 
 // waitForRateLimit waits for rate limit permission before making API calls
 func (c *Client) waitForRateLimit() {
-	c.limiter.Wait(context.Background())
+	_ = c.limiter.Wait(context.Background())
 }
 
 func (c *Client) TestConnection() error {
