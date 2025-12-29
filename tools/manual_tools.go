@@ -12,8 +12,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/sirupsen/logrus"
 	"go.woodpecker-ci.org/woodpecker/v3/pipeline/errors"
-	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/linter"
 	yaml "go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml"
+	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/linter"
 	"go.woodpecker-ci.org/woodpecker/v3/woodpecker-go/woodpecker"
 
 	"github.com/denysvitali/woodpecker-ci-mcp/internal/client"

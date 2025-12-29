@@ -22,18 +22,18 @@ var (
 
 	// Styles
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FFA500")).
-		MarginBottom(1)
+			Bold(true).
+			Foreground(lipgloss.Color("#FFA500")).
+			MarginBottom(1)
 
 	successStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#10B981"))
+			Foreground(lipgloss.Color("#10B981"))
 
 	errorStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#EF4444"))
+			Foreground(lipgloss.Color("#EF4444"))
 
 	infoStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#0EA5E9"))
+			Foreground(lipgloss.Color("#0EA5E9"))
 )
 
 var rootCmd = &cobra.Command{

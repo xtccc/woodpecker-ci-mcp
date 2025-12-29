@@ -46,8 +46,8 @@ func New(cfg Config, logger *logrus.Logger) (*Client, error) {
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &bearerTokenTransport{
-			token:   cfg.Token,
-			base:    http.DefaultTransport,
+			token: cfg.Token,
+			base:  http.DefaultTransport,
 		},
 	}
 
