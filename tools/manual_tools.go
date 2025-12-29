@@ -279,268 +279,372 @@ func (tm *ToolManager) getToolHandler(name string) server.ToolHandlerFunc {
 }
 
 func (tm *ToolManager) handleListRepositories(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repositories, err := tm.client.ListRepositories()
-	if err != nil {
-		tm.logger.WithError(err).Error("Failed to list repositories")
-		return tm.errorResult(fmt.Sprintf("Failed to list repositories: %v", err)), nil
-	}
-
-	showAll := getBool(arguments, "all", false)
-	if !showAll {
-		var activeRepos []*woodpecker.Repo
-		for _, repo := range repositories {
-			if repo.IsActive {
-				activeRepos = append(activeRepos, repo)
-			}
-		}
-		repositories = activeRepos
-	}
-
-	response := map[string]interface{}{
-		"repositories": repositories,
-		"total_count":  len(repositories),
-		"showing_all":  showAll,
-	}
-
-	return tm.jsonResult(response)
-}
-
-func (tm *ToolManager) handleGetRepository(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repoID, err := getRepoID(tm.client, arguments)
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	repo, err := tm.client.GetRepository(repoID)
-	if err != nil {
-		return tm.errorResult(fmt.Sprintf("Failed to get repository: %v", err)), nil
-	}
-
-	return tm.jsonResult(repo)
-}
-
-func (tm *ToolManager) handleListPipelines(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repoID, err := getRepoID(tm.client, arguments)
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	pipelines, err := tm.client.ListPipelines(repoID)
-	if err != nil {
-		return tm.errorResult(fmt.Sprintf("Failed to list pipelines: %v", err)), nil
-	}
-
-	// Apply limit with default of 10 and max of 100
-	limit := getNumber(arguments, "limit", 10)
-	if limit > 100 {
-		limit = 100
-	}
-	if limit < 1 {
-		limit = 10
-	}
-
-	totalCount := len(pipelines)
-	limited := totalCount > int(limit)
-	
-	if limited {
-		pipelines = pipelines[:int(limit)]
-	}
-
-	response := map[string]interface{}{
-		"repo_id":     repoID,
-		"pipelines":   pipelines,
-		"total_count": totalCount,
-		"returned":    len(pipelines),
-		"limited":     limited,
-	}
-
-	return tm.jsonResult(response)
-}
-
-func (tm *ToolManager) handleGetPipelineStatus(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repoID, err := getRepoID(tm.client, arguments)
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	var pipeline interface{}
-	latest := getBool(arguments, "latest", false)
-
-	if latest {
-		pipeline, err = tm.client.GetLastPipeline(repoID)
-	} else {
-		pipelineNum, numErr := requireNumber(arguments, "pipeline_number")
-		if numErr != nil {
-			return tm.errorResult("Either pipeline_number or latest=true must be provided"), nil
-		}
-		pipeline, err = tm.client.GetPipeline(repoID, int64(pipelineNum))
-	}
-
-	if err != nil {
-		return tm.errorResult(fmt.Sprintf("Failed to get pipeline: %v", err)), nil
-	}
-
-	return tm.jsonResult(pipeline)
-}
-
-func (tm *ToolManager) handleStartPipeline(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repoID, err := getRepoID(tm.client, arguments)
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	pipelineNum, err := requireNumber(arguments, "pipeline_number")
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	params := make(map[string]string)
-	if getBool(arguments, "fork", false) {
-		params["fork"] = "true"
-	}
-
-	pipeline, err := tm.client.StartPipeline(repoID, int64(pipelineNum), params)
-	if err != nil {
-		return tm.errorResult(fmt.Sprintf("Failed to start pipeline: %v", err)), nil
-	}
-
-	return tm.jsonResult(pipeline)
-}
-
-func (tm *ToolManager) handleStopPipeline(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repoID, err := getRepoID(tm.client, arguments)
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	pipelineNum, err := requireNumber(arguments, "pipeline_number")
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	err = tm.client.StopPipeline(repoID, int64(pipelineNum))
-	if err != nil {
-		return tm.errorResult(fmt.Sprintf("Failed to stop pipeline: %v", err)), nil
-	}
-
-	response := map[string]interface{}{
-		"success":         true,
-		"message":         "Pipeline stopped successfully",
-		"repo_id":         repoID,
-		"pipeline_number": int64(pipelineNum),
-	}
-
-	return tm.jsonResult(response)
-}
-
-func (tm *ToolManager) handleApprovePipeline(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repoID, err := getRepoID(tm.client, arguments)
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	pipelineNum, err := requireNumber(arguments, "pipeline_number")
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	pipeline, err := tm.client.ApprovePipeline(repoID, int64(pipelineNum))
-	if err != nil {
-		return tm.errorResult(fmt.Sprintf("Failed to approve pipeline: %v", err)), nil
-	}
-
-	return tm.jsonResult(pipeline)
-}
-
-func (tm *ToolManager) handleGetLogs(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	repoID, err := getRepoID(tm.client, arguments)
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	pipelineNum, err := requireNumber(arguments, "pipeline_number")
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	stepID, err := requireNumber(arguments, "step_id")
-	if err != nil {
-		return tm.errorResult(err.Error()), nil
-	}
-
-	format := getString(arguments, "format", "json")
-	lines := getNumber(arguments, "lines", 0) // 0 means all lines
-	useTail := getBool(arguments, "tail", false)
-
-	logs, err := tm.client.GetStepLogs(repoID, int64(pipelineNum), int64(stepID))
-	if err != nil {
-		return tm.errorResult(fmt.Sprintf("Failed to get logs: %v", err)), nil
-	}
-
-	totalCount := len(logs)
-	limited := false
-
-	// Apply line limiting if requested
-	if lines > 0 && int(lines) < len(logs) {
-		limited = true
-		if useTail {
-			// Take last N lines
-			logs = logs[len(logs)-int(lines):]
-		} else {
-			// Take first N lines
-			logs = logs[:int(lines)]
-		}
-	}
-
-	if format == "text" {
-		var logLines []string
-		for _, logEntry := range logs {
-			if len(logEntry.Data) > 0 {
-				logLines = append(logLines, string(logEntry.Data))
-			}
-		}
-
-		var plainText string
-		if limited {
-			direction := "first"
-			if useTail {
-				direction = "last"
-			}
-			plainText = fmt.Sprintf("Logs for repo %d, pipeline %d, step %d (%s %d of %d lines):\n%s",
-				repoID, int64(pipelineNum), int64(stepID), direction, len(logs), totalCount, strings.Join(logLines, "\n"))
-		} else {
-			plainText = fmt.Sprintf("Logs for repo %d, pipeline %d, step %d:\n%s",
-				repoID, int64(pipelineNum), int64(stepID), strings.Join(logLines, "\n"))
-		}
-
+	select {
+	case <-ctx.Done():
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				mcp.TextContent{
 					Type: "text",
-					Text: plainText,
+					Text: "request cancelled",
 				},
 			},
+			IsError: true,
 		}, nil
-	}
-
-	response := map[string]interface{}{
-		"repo_id":         repoID,
-		"pipeline_number": int64(pipelineNum),
-		"step_id":         int64(stepID),
-		"logs":            logs,
-		"total_count":     totalCount,
-		"returned":        len(logs),
-		"limited":         limited,
-	}
-
-	if limited {
-		response["limit_mode"] = map[string]interface{}{
-			"lines": int(lines),
-			"tail":  useTail,
+	default:
+		repositories, err := tm.client.ListRepositories()
+		if err != nil {
+			tm.logger.WithError(err).Error("Failed to list repositories")
+			return tm.errorResult(fmt.Sprintf("Failed to list repositories: %v", err)), nil
 		}
-	}
 
-	return tm.jsonResult(response)
+		showAll := getBool(arguments, "all", false)
+		if !showAll {
+			var activeRepos []*woodpecker.Repo
+			for _, repo := range repositories {
+				if repo.IsActive {
+					activeRepos = append(activeRepos, repo)
+				}
+			}
+			repositories = activeRepos
+		}
+
+		response := map[string]interface{}{
+			"repositories": repositories,
+			"total_count":  len(repositories),
+			"showing_all":  showAll,
+		}
+
+		return tm.jsonResult(response)
+	}
+}
+
+func (tm *ToolManager) handleGetRepository(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	select {
+	case <-ctx.Done():
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: "request cancelled",
+				},
+			},
+			IsError: true,
+		}, nil
+	default:
+		repoID, err := getRepoID(tm.client, arguments)
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		repo, err := tm.client.GetRepository(repoID)
+		if err != nil {
+			return tm.errorResult(fmt.Sprintf("Failed to get repository: %v", err)), nil
+		}
+
+		return tm.jsonResult(repo)
+	}
+}
+
+func (tm *ToolManager) handleListPipelines(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	select {
+	case <-ctx.Done():
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: "request cancelled",
+				},
+			},
+			IsError: true,
+		}, nil
+	default:
+		repoID, err := getRepoID(tm.client, arguments)
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		pipelines, err := tm.client.ListPipelines(repoID)
+		if err != nil {
+			return tm.errorResult(fmt.Sprintf("Failed to list pipelines: %v", err)), nil
+		}
+
+		// Apply limit with default of 10 and max of 100
+		limit := getNumber(arguments, "limit", 10)
+		if limit > 100 {
+			limit = 100
+		}
+		if limit < 1 {
+			limit = 10
+		}
+
+		totalCount := len(pipelines)
+		limited := totalCount > int(limit)
+
+		if limited {
+			pipelines = pipelines[:int(limit)]
+		}
+
+		response := map[string]interface{}{
+			"repo_id":     repoID,
+			"pipelines":   pipelines,
+			"total_count": totalCount,
+			"returned":    len(pipelines),
+			"limited":     limited,
+		}
+
+		return tm.jsonResult(response)
+	}
+}
+
+func (tm *ToolManager) handleGetPipelineStatus(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	select {
+	case <-ctx.Done():
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: "request cancelled",
+				},
+			},
+			IsError: true,
+		}, nil
+	default:
+		repoID, err := getRepoID(tm.client, arguments)
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		var pipeline interface{}
+		latest := getBool(arguments, "latest", false)
+
+		if latest {
+			pipeline, err = tm.client.GetLastPipeline(repoID)
+		} else {
+			pipelineNum, numErr := requireNumber(arguments, "pipeline_number")
+			if numErr != nil {
+				return tm.errorResult("Either pipeline_number or latest=true must be provided"), nil
+			}
+			pipeline, err = tm.client.GetPipeline(repoID, int64(pipelineNum))
+		}
+
+		if err != nil {
+			return tm.errorResult(fmt.Sprintf("Failed to get pipeline: %v", err)), nil
+		}
+
+		return tm.jsonResult(pipeline)
+	}
+}
+
+func (tm *ToolManager) handleStartPipeline(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	select {
+	case <-ctx.Done():
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: "request cancelled",
+				},
+			},
+			IsError: true,
+		}, nil
+	default:
+		repoID, err := getRepoID(tm.client, arguments)
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		pipelineNum, err := requireNumber(arguments, "pipeline_number")
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		params := make(map[string]string)
+		if getBool(arguments, "fork", false) {
+			params["fork"] = "true"
+		}
+
+		pipeline, err := tm.client.StartPipeline(repoID, int64(pipelineNum), params)
+		if err != nil {
+			return tm.errorResult(fmt.Sprintf("Failed to start pipeline: %v", err)), nil
+		}
+
+		return tm.jsonResult(pipeline)
+	}
+}
+
+func (tm *ToolManager) handleStopPipeline(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	select {
+	case <-ctx.Done():
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: "request cancelled",
+				},
+			},
+			IsError: true,
+		}, nil
+	default:
+		repoID, err := getRepoID(tm.client, arguments)
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		pipelineNum, err := requireNumber(arguments, "pipeline_number")
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		err = tm.client.StopPipeline(repoID, int64(pipelineNum))
+		if err != nil {
+			return tm.errorResult(fmt.Sprintf("Failed to stop pipeline: %v", err)), nil
+		}
+
+		response := map[string]interface{}{
+			"success":         true,
+			"message":         "Pipeline stopped successfully",
+			"repo_id":         repoID,
+			"pipeline_number": int64(pipelineNum),
+		}
+
+		return tm.jsonResult(response)
+	}
+}
+
+func (tm *ToolManager) handleApprovePipeline(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	select {
+	case <-ctx.Done():
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: "request cancelled",
+				},
+			},
+			IsError: true,
+		}, nil
+	default:
+		repoID, err := getRepoID(tm.client, arguments)
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		pipelineNum, err := requireNumber(arguments, "pipeline_number")
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		pipeline, err := tm.client.ApprovePipeline(repoID, int64(pipelineNum))
+		if err != nil {
+			return tm.errorResult(fmt.Sprintf("Failed to approve pipeline: %v", err)), nil
+		}
+
+		return tm.jsonResult(pipeline)
+	}
+}
+
+func (tm *ToolManager) handleGetLogs(ctx context.Context, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
+	select {
+	case <-ctx.Done():
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: "request cancelled",
+				},
+			},
+			IsError: true,
+		}, nil
+	default:
+		repoID, err := getRepoID(tm.client, arguments)
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		pipelineNum, err := requireNumber(arguments, "pipeline_number")
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		stepID, err := requireNumber(arguments, "step_id")
+		if err != nil {
+			return tm.errorResult(err.Error()), nil
+		}
+
+		format := getString(arguments, "format", "json")
+		lines := getNumber(arguments, "lines", 0) // 0 means all lines
+		useTail := getBool(arguments, "tail", false)
+
+		logs, err := tm.client.GetStepLogs(repoID, int64(pipelineNum), int64(stepID))
+		if err != nil {
+			return tm.errorResult(fmt.Sprintf("Failed to get logs: %v", err)), nil
+		}
+
+		totalCount := len(logs)
+		limited := false
+
+		// Apply line limiting if requested
+		if lines > 0 && int(lines) < len(logs) {
+			limited = true
+			if useTail {
+				// Take last N lines
+				logs = logs[len(logs)-int(lines):]
+			} else {
+				// Take first N lines
+				logs = logs[:int(lines)]
+			}
+		}
+
+		if format == "text" {
+			var logLines []string
+			for _, logEntry := range logs {
+				if len(logEntry.Data) > 0 {
+					logLines = append(logLines, string(logEntry.Data))
+				}
+			}
+
+			var plainText string
+			if limited {
+				direction := "first"
+				if useTail {
+					direction = "last"
+				}
+				plainText = fmt.Sprintf("Logs for repo %d, pipeline %d, step %d (%s %d of %d lines):\n%s",
+					repoID, int64(pipelineNum), int64(stepID), direction, len(logs), totalCount, strings.Join(logLines, "\n"))
+			} else {
+				plainText = fmt.Sprintf("Logs for repo %d, pipeline %d, step %d:\n%s",
+					repoID, int64(pipelineNum), int64(stepID), strings.Join(logLines, "\n"))
+			}
+
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					mcp.TextContent{
+						Type: "text",
+						Text: plainText,
+					},
+				},
+			}, nil
+		}
+
+		response := map[string]interface{}{
+			"repo_id":         repoID,
+			"pipeline_number": int64(pipelineNum),
+			"step_id":         int64(stepID),
+			"logs":            logs,
+			"total_count":     totalCount,
+			"returned":        len(logs),
+			"limited":         limited,
+		}
+
+		if limited {
+			response["limit_mode"] = map[string]interface{}{
+				"lines": int(lines),
+				"tail":  useTail,
+			}
+		}
+
+		return tm.jsonResult(response)
+	}
 }
 
 func (tm *ToolManager) jsonResult(data interface{}) (*mcp.CallToolResult, error) {

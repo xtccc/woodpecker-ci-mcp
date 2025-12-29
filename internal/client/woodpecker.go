@@ -3,22 +3,35 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"go.woodpecker-ci.org/woodpecker/v3/woodpecker-go/woodpecker"
-	"golang.org/x/oauth2"
+	"golang.org/x/time/rate"
 )
 
 type Client struct {
-	client woodpecker.Client
-	logger *logrus.Logger
-	url    string
+	client  woodpecker.Client
+	logger  *logrus.Logger
+	url     string
+	limiter *rate.Limiter
 }
 
 type Config struct {
 	URL   string
 	Token string
+}
+
+// bearerTokenTransport adds bearer token authentication to HTTP requests
+type bearerTokenTransport struct {
+	token string
+	base  http.RoundTripper
+}
+
+func (t *bearerTokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+t.token)
+	return t.base.RoundTrip(req)
 }
 
 func New(cfg Config, logger *logrus.Logger) (*Client, error) {
@@ -29,23 +42,23 @@ func New(cfg Config, logger *logrus.Logger) (*Client, error) {
 		return nil, fmt.Errorf("woodpecker token is required")
 	}
 
-	// Create OAuth2 config and client
-	config := &oauth2.Config{}
-	token := &oauth2.Token{AccessToken: cfg.Token}
-
-	ctx := context.Background()
-	httpClient := config.Client(ctx, token)
-
-	// Set timeout for HTTP client
-	httpClient.Timeout = 30 * time.Second
+	// Create HTTP client with bearer token authentication
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &bearerTokenTransport{
+			token:   cfg.Token,
+			base:    http.DefaultTransport,
+		},
+	}
 
 	// Create Woodpecker client
 	client := woodpecker.NewClient(cfg.URL, httpClient)
 
 	wclient := &Client{
-		client: client,
-		logger: logger,
-		url:    cfg.URL,
+		client:  client,
+		logger:  logger,
+		url:     cfg.URL,
+		limiter: rate.NewLimiter(rate.Limit(10), 20),
 	}
 
 	// Test connection
@@ -60,6 +73,11 @@ func New(cfg Config, logger *logrus.Logger) (*Client, error) {
 	return wclient, nil
 }
 
+// waitForRateLimit waits for rate limit permission before making API calls
+func (c *Client) waitForRateLimit() {
+	c.limiter.Wait(context.Background())
+}
+
 func (c *Client) TestConnection() error {
 	// Try to get current user info to test connection
 	_, err := c.client.Self()
@@ -71,6 +89,7 @@ func (c *Client) TestConnection() error {
 }
 
 func (c *Client) ListRepositories() ([]*woodpecker.Repo, error) {
+	c.waitForRateLimit()
 	repos, err := c.client.RepoList(woodpecker.RepoListOptions{})
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to list repositories")
@@ -82,6 +101,7 @@ func (c *Client) ListRepositories() ([]*woodpecker.Repo, error) {
 }
 
 func (c *Client) GetRepository(repoID int64) (*woodpecker.Repo, error) {
+	c.waitForRateLimit()
 	repo, err := c.client.Repo(repoID)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -95,6 +115,7 @@ func (c *Client) GetRepository(repoID int64) (*woodpecker.Repo, error) {
 }
 
 func (c *Client) LookupRepository(fullName string) (*woodpecker.Repo, error) {
+	c.waitForRateLimit()
 	repo, err := c.client.RepoLookup(fullName)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -108,6 +129,7 @@ func (c *Client) LookupRepository(fullName string) (*woodpecker.Repo, error) {
 }
 
 func (c *Client) ListPipelines(repoID int64) ([]*woodpecker.Pipeline, error) {
+	c.waitForRateLimit()
 	pipelines, err := c.client.PipelineList(repoID, woodpecker.PipelineListOptions{})
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -125,6 +147,7 @@ func (c *Client) ListPipelines(repoID int64) ([]*woodpecker.Pipeline, error) {
 }
 
 func (c *Client) GetPipeline(repoID, pipelineNum int64) (*woodpecker.Pipeline, error) {
+	c.waitForRateLimit()
 	pipeline, err := c.client.Pipeline(repoID, pipelineNum)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -139,6 +162,7 @@ func (c *Client) GetPipeline(repoID, pipelineNum int64) (*woodpecker.Pipeline, e
 }
 
 func (c *Client) GetLastPipeline(repoID int64) (*woodpecker.Pipeline, error) {
+	c.waitForRateLimit()
 	pipeline, err := c.client.PipelineLast(repoID, woodpecker.PipelineLastOptions{})
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -152,6 +176,7 @@ func (c *Client) GetLastPipeline(repoID int64) (*woodpecker.Pipeline, error) {
 }
 
 func (c *Client) StartPipeline(repoID, pipelineNum int64, params map[string]string) (*woodpecker.Pipeline, error) {
+	c.waitForRateLimit()
 	options := woodpecker.PipelineStartOptions{
 		Params: params,
 	}
@@ -173,6 +198,7 @@ func (c *Client) StartPipeline(repoID, pipelineNum int64, params map[string]stri
 }
 
 func (c *Client) StopPipeline(repoID, pipelineNum int64) error {
+	c.waitForRateLimit()
 	err := c.client.PipelineStop(repoID, pipelineNum)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -191,6 +217,7 @@ func (c *Client) StopPipeline(repoID, pipelineNum int64) error {
 }
 
 func (c *Client) ApprovePipeline(repoID, pipelineNum int64) (*woodpecker.Pipeline, error) {
+	c.waitForRateLimit()
 	pipeline, err := c.client.PipelineApprove(repoID, pipelineNum)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -209,6 +236,7 @@ func (c *Client) ApprovePipeline(repoID, pipelineNum int64) (*woodpecker.Pipelin
 }
 
 func (c *Client) DeclinePipeline(repoID, pipelineNum int64) (*woodpecker.Pipeline, error) {
+	c.waitForRateLimit()
 	pipeline, err := c.client.PipelineDecline(repoID, pipelineNum)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -227,6 +255,7 @@ func (c *Client) DeclinePipeline(repoID, pipelineNum int64) (*woodpecker.Pipelin
 }
 
 func (c *Client) CreatePipeline(repoID int64, opt *woodpecker.PipelineOptions) (*woodpecker.Pipeline, error) {
+	c.waitForRateLimit()
 	pipeline, err := c.client.PipelineCreate(repoID, opt)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -246,6 +275,7 @@ func (c *Client) CreatePipeline(repoID int64, opt *woodpecker.PipelineOptions) (
 
 // Log methods
 func (c *Client) GetStepLogs(repoID, pipelineNum, stepID int64) ([]*woodpecker.LogEntry, error) {
+	c.waitForRateLimit()
 	logs, err := c.client.StepLogEntries(repoID, pipelineNum, stepID)
 	if err != nil {
 		c.logger.WithFields(logrus.Fields{
@@ -262,6 +292,7 @@ func (c *Client) GetStepLogs(repoID, pipelineNum, stepID int64) ([]*woodpecker.L
 
 // User methods
 func (c *Client) GetCurrentUser() (*woodpecker.User, error) {
+	c.waitForRateLimit()
 	user, err := c.client.Self()
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to get current user")

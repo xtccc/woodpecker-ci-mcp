@@ -29,6 +29,9 @@ type LoggingConfig struct {
 	Format string `mapstructure:"format"`
 }
 
+// userHomeDirFunc is a variable that allows mocking os.UserHomeDir in tests
+var userHomeDirFunc = os.UserHomeDir
+
 func Load() (*Config, error) {
 	v := viper.New()
 
@@ -79,7 +82,7 @@ func (c *Config) Validate() error {
 }
 
 func GetConfigDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := userHomeDirFunc()
 	if err != nil {
 		return "", err
 	}

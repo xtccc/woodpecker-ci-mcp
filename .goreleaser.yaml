@@ -1,0 +1,74 @@
+# This is an example .goreleaser.yaml. Please check the documentation
+# at https://goreleaser.com for more details.
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+      - GO111MODULE=on
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    binary: woodpecker-mcp
+    main: ./cmd/woodpecker-mcp
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .Date }}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      amd64: x86_64
+      arm64: aarch64
+      arm: v7
+
+  - format: zip
+    name_template: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      amd64: x86_64
+      arm64: aarch64
+      arm: v7
+
+nfpms:
+  - vendor: woodpecker-ci-mcp
+    maintainer: Denys Vitali <denys.vitali@outlook.com>
+    description: MCP Server for Woodpecker CI integration
+    homepage: https://github.com/denysvitali/woodpecker-ci-mcp
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    binary: woodpecker-mcp
+
+release:
+  github:
+    owner: denysvitali
+    name: woodpecker-ci-mcp
+  draft: false
+  name_template: "{{ .Tag }}"
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Tag }}_checksums.txt"
+  algorithm: sha256
+
+announce:
+  twitter:
+    enabled: false
