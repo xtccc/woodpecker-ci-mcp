@@ -46,8 +46,9 @@ func (s *MCPServer) registerTools() error {
 	toolManager := tools.NewToolManager(s.client, s.logger)
 
 	// Register tool handlers
-	s.server.AddTools(toolManager.GetServerTools()...)
-	s.logger.WithField("tool_count", 8).Info("Registered MCP tools")
+	serverTools := toolManager.GetServerTools()
+	s.server.AddTools(serverTools...)
+	s.logger.WithField("tool_count", len(serverTools)).Info("Registered MCP tools")
 	return nil
 }
 
