@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -600,14 +599,8 @@ func (tm *ToolManager) handleGetLogs(ctx context.Context, arguments map[string]i
 		var logLines []string
 		for _, logEntry := range logs {
 			if len(logEntry.Data) > 0 {
-				// Decode base64 data
-				decoded := make([]byte, base64.StdEncoding.DecodedLen(len(logEntry.Data)))
-				n, err := base64.StdEncoding.Decode(decoded, logEntry.Data)
-				if err != nil {
-					logLines = append(logLines, fmt.Sprintf("[Error decoding log: %v]", err))
-				} else {
-					logLines = append(logLines, string(decoded[:n]))
-				}
+				// Data is already decoded as []byte from the API's JSON array of integers
+				logLines = append(logLines, string(logEntry.Data))
 			}
 		}
 
@@ -634,21 +627,12 @@ func (tm *ToolManager) handleGetLogs(ctx context.Context, arguments map[string]i
 		}, nil
 	}
 
-	// Decode logs for JSON response
+	// Prepare logs for JSON response (data is already decoded as []byte from the API)
 	var decodedLogs []map[string]interface{}
 	for _, logEntry := range logs {
-		decoded := ""
-		if len(logEntry.Data) > 0 {
-			decodedBytes, err := base64.StdEncoding.DecodeString(string(logEntry.Data))
-			if err != nil {
-				decoded = fmt.Sprintf("[Error decoding: %v]", err)
-			} else {
-				decoded = string(decodedBytes)
-			}
-		}
 		decodedLogs = append(decodedLogs, map[string]interface{}{
 			"line": int(logEntry.Line),
-			"data": decoded,
+			"data": string(logEntry.Data),
 		})
 	}
 
