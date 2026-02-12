@@ -41,7 +41,6 @@ func Load() (*Config, error) {
 	// Configuration file
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
-	v.AddConfigPath(".")
 	v.AddConfigPath("$HOME/.config/woodpecker-mcp")
 	v.AddConfigPath("/etc/woodpecker-mcp")
 
